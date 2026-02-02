@@ -1,116 +1,148 @@
-## Modified Whatsapp-API
-<p align='center'>
-  <img src="https://files.catbox.moe/rotxy8.jpg" width="172">
-</p>
+/**
+ * Modified Whatsapp-API
+ * Bail By Rixzz – FIXED VERSION
+ */
 
---- 
-
-## Usage
-```json
-"depencies": {
-  "@whiskeysockets/baileys": "github:ArgaXwyz/7Six"
-}
-```
-## Import
-```javascript
-const {
-  default:makeWASocket,
-  // Other Options 
-} = require('@whiskeysockets/baileys');
-```
-
----
-# How To Connect To Whatsapp
-## With QR Code
-```javascript
-const {
-  default: makeWASocket
-} = require('@whiskeysockets/baileys');
-
-const client = makeWASocket({
-  browser: ['Ubuntu', 'Chrome', '20.00.1'],
-  printQRInTerminal: true
-})
-```
-
-## Connect With Number
-```javascript
 const {
   default: makeWASocket,
-  fetchLatestWAWebVersion
-} = require('@whiskeysockets/baileys');
+  fetchLatestBaileysVersion,
+  useMultiFileAuthState,
+  DisconnectReason
+} = require('@whiskeysockets/baileys')
 
-const client = makeWASocket({
-  browser: ['Ubuntu', 'Chrome', '20.00.1'],
-  printQRInTerminal: false,
-  version: fetchLatestWAWebVersion()
-  // Other options
-});
+const fs = require('fs')
+const P = require('pino')
 
-const number = "628XXXXX";
-const code = await client.requestPairingCode(number.trim) /* Use : (number, "YYYYYYYY") for custom-pairing */
+/* =======================
+   CONNECT (QR / PAIRING)
+======================= */
 
-console.log("Ur pairing code : " + code)
-```
+async function connectWA({ pairing = false, number = null }) {
+  const { state, saveCreds } = await useMultiFileAuthState('./session')
+  const { version } = await fetchLatestBaileysVersion()
 
-# Sending messages
+  const client = makeWASocket({
+    auth: state,
+    logger: P({ level: 'silent' }),
+    printQRInTerminal: !pairing,
+    browser: ['Ubuntu', 'Chrome', '20.0.1'],
+    version
+  })
 
-## send orderMessage
-```javascript
-const fs = require('fs');
-const ZeppImg = fs.readFileSync('./ZeppImage');
+  if (pairing && number && !client.authState.creds.registered) {
+    const code = await client.requestPairingCode(number.trim())
+    console.log('Your pairing code:', code)
+  }
 
-await client.sendMessage(m.chat, {
-  thumbnail: ZeppImg,
-  message: "Gotta get a grip",
-  orderTitle: "PongKangColi",
-  totalAmount1000: 72502,
-  totalCurrencyCode: "IDR"
-}, { quoted:m })
-```
+  client.ev.on('creds.update', saveCreds)
 
-## send pollResultSnapshotMessage
-```javascript
-await client.sendMessage(m.chat, {
-  pollResultMessage: {
-    name: "n",
-    options: [
-      {
-        optionName: "poll 1"
-      },
-      {
-        optionName: "poll 2"
+  client.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update
+    if (connection === 'close') {
+      if (
+        lastDisconnect?.error?.output?.statusCode !==
+        DisconnectReason.loggedOut
+      ) {
+        connectWA({ pairing, number })
       }
-    ],
-    newsletter: {
-      newsletterName: "RiXzZ",
-      newsletterJid: "1@newsletter"
+    } else if (connection === 'open') {
+      console.log('WhatsApp Connected')
     }
-  }
-})
-```
+  })
 
-## send productMessage
-```javascript
-await client.relayMessage(m.chat, {
-  productMessage {
-    title: "DewaBail",
-    description: "zZZ...",
-    thumbnail: { url: "./ZeppImage" },
-    productId: "EXAMPLE_TOKEN",
-    retailerId: "EXAMPLE_RETAILER_ID",
-    url: "https://t.me/RixzzNotDev",
-    body: "Nak Tido",
-    footer: "Footer",
-    buttons: [
-      {
-        name: "cta_url",
-        buttonParamsJson: "{\"display_text\":\"7eppeli-Pdf\",\"url\":\"https://t.me/RixzzNotDev\"}"
+  return client
+}
+
+/* =======================
+   SEND ORDER MESSAGE
+======================= */
+
+async function sendOrderMessage(client, m) {
+  const thumb = fs.readFileSync('./ZeppImage.jpg')
+
+  await client.sendMessage(
+    m.chat,
+    {
+      orderMessage: {
+        itemCount: 1,
+        status: 1,
+        surface: 1,
+        message: "Gotta get a grip",
+        orderTitle: "PongKangColi",
+        sellerJid: m.chat,
+        thumbnail: thumb,
+        totalAmount1000: 72502,
+        totalCurrencyCode: "IDR"
       }
-    ],
-    priceAmount1000: 72502,
-    currencyCode: "IDR"
-  }
-})
-```
-Makasi Dhh Pake Ni Bail By Rixzz :>
+    },
+    { quoted: m }
+  )
+}
+
+/* =======================
+   SEND POLL RESULT SNAPSHOT
+======================= */
+
+async function sendPollResult(client, m) {
+  await client.sendMessage(m.chat, {
+    pollResultSnapshotMessage: {
+      name: "n",
+      options: [
+        { optionName: "poll 1", voteCount: 10 },
+        { optionName: "poll 2", voteCount: 5 }
+      ],
+      totalVotes: 15
+    }
+  })
+}
+
+/* =======================
+   SEND PRODUCT MESSAGE
+======================= */
+
+async function sendProductMessage(client, m) {
+  const thumb = fs.readFileSync('./ZeppImage.jpg')
+
+  await client.relayMessage(
+    m.chat,
+    {
+      productMessage: {
+        product: {
+          productImage: {
+            mimetype: "image/jpeg",
+            jpegThumbnail: thumb
+          },
+          title: "DewaBail",
+          description: "zZZ...",
+          priceAmount1000: 72502,
+          currencyCode: "IDR",
+          retailerId: "EXAMPLE_RETAILER_ID",
+          productId: "EXAMPLE_TOKEN",
+          url: "https://t.me/RixzzNotDev"
+        },
+        businessOwnerJid: m.chat,
+        body: "Nak Tido",
+        footer: "Footer",
+        buttons: [
+          {
+            buttonId: "cta_url",
+            buttonText: { displayText: "7eppeli-Pdf" },
+            type: 1
+          }
+        ]
+      }
+    },
+    {}
+  )
+}
+
+/* =======================
+   EXPORT
+======================= */
+
+module.exports = {
+  connectWA,
+  sendOrderMessage,
+  sendPollResult,
+  sendProductMessage
+}
