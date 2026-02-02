@@ -1,116 +1,144 @@
-## Modified Whatsapp-API
-<p align='center'>
-  <img src="https://files.catbox.moe/rotxy8.jpg" width="172">
-</p>
+Benerin bagian sini
 
---- 
+/**
 
-## Usage
-```json
-"depencies": {
-  "@whiskeysockets/baileys": "github:ArgaXwyz/7Six"
-}
-```
-## Import
-```javascript
+Modified Whatsapp-API
+
+Bail By Rixzz – FIXED VERSION (2026 Update)
+
+Repo: github:ArgaXwyz7Six/Xwyz7ap
+*/
+
+
 const {
-  default:makeWASocket,
-  // Other Options 
+default: makeWASocket,
+fetchLatestBaileysVersion,  // Lebih akurat daripada fetchLatestWAWebVersion
+useMultiFileAuthState,
+DisconnectReason,
+Browsers  // Optional: buat browser config lebih clean
 } = require('@whiskeysockets/baileys');
-```
 
----
-# How To Connect To Whatsapp
-## With QR Code
-```javascript
-const {
-  default: makeWASocket
-} = require('@whiskeysockets/baileys');
+const fs = require('fs');
+const pino = require('pino');
+
+/* =======================
+CONNECT (QR / PAIRING) + Auto Reconnect
+======================= */
+async function connectWA({ pairing = false, number = null }) {
+const { state, saveCreds } = await useMultiFileAuthState('./session');
+
+const { version } = await fetchLatestBaileysVersion();  // Fetch version terbaru otomatis
 
 const client = makeWASocket({
-  browser: ['Ubuntu', 'Chrome', '20.00.1'],
-  printQRInTerminal: true
-})
-```
-
-## Connect With Number
-```javascript
-const {
-  default: makeWASocket,
-  fetchLatestWAWebVersion
-} = require('@whiskeysockets/baileys');
-
-const client = makeWASocket({
-  browser: ['Ubuntu', 'Chrome', '20.00.1'],
-  printQRInTerminal: false,
-  version: fetchLatestWAWebVersion()
-  // Other options
+version,
+auth: state,
+logger: pino({ level: 'silent' }),  // Silent logger
+printQRInTerminal: !pairing,
+browser: Browsers.ubuntu('Chrome'),  // Lebih clean & recommended daripada array manual
+// syncFullHistory: false,  // Uncomment kalau ga mau sync history full (hemat data)
 });
 
-const number = "628XXXXX";
-const code = await client.requestPairingCode(number.trim) /* Use : (number, "YYYYYYYY") for custom-pairing */
+if (pairing && number && !client.authState.creds.registered) {
+const code = await client.requestPairingCode(number.trim());
+console.log('Your pairing code:', code);
+}
 
-console.log("Ur pairing code : " + code)
-```
+client.ev.on('creds.update', saveCreds);
 
-# Sending messages
+client.ev.on('connection.update', (update) => {
+const { connection, lastDisconnect } = update;
+if (connection === 'close') {
+const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+console.log('Connection closed due to', lastDisconnect?.error, ', reconnecting?', shouldReconnect);
+if (shouldReconnect) {
+connectWA({ pairing, number });  // Reconnect recursive
+}
+} else if (connection === 'open') {
+console.log('WhatsApp Connected Successfully!');
+}
+});
 
-## send orderMessage
-```javascript
-const fs = require('fs');
-const ZeppImg = fs.readFileSync('./ZeppImage');
+return client;
+}
+
+/* =======================
+SEND ORDER MESSAGE (Fixed Structure)
+======================= */
+async function sendOrderMessage(client, m) {
+const thumb = fs.readFileSync('./ZeppImage.jpg');  // Pastikan file ada & path benar
 
 await client.sendMessage(m.chat, {
-  thumbnail: ZeppImg,
-  message: "Gotta get a grip",
-  orderTitle: "PongKangColi",
-  totalAmount1000: 72502,
-  totalCurrencyCode: "IDR"
-}, { quoted:m })
-```
+orderMessage: {
+itemCount: 1,
+status: 'INQUIRY',  // Atau 'ACCEPTED' / 'DECLINED' tergantung status
+surface: 'CATALOG',
+message: "Gotta get a grip",
+orderTitle: "PongKangColi",
+sellerJid: m.chat,  // Seller = chat sendiri kalau self-order
+thumbnail: thumb,
+totalAmount1000: 72502,
+totalCurrencyCode: "IDR"
+}
+}, { quoted: m });
+}
 
-## send pollResultSnapshotMessage
-```javascript
+/* =======================
+SEND POLL RESULT SNAPSHOT (Updated Structure)
+======================= */
+async function sendPollResult(client, m) {
 await client.sendMessage(m.chat, {
-  pollResultMessage: {
-    name: "n",
-    options: [
-      {
-        optionName: "poll 1"
-      },
-      {
-        optionName: "poll 2"
-      }
-    ],
-    newsletter: {
-      newsletterName: "RiXzZ",
-      newsletterJid: "1@newsletter"
-    }
-  }
-})
-```
+pollResultSnapshotMessage: {
+name: "n",
+options: [
+{ optionName: "poll 1", voteCount: 10 },
+{ optionName: "poll 2", voteCount: 5 }
+],
+totalVotes: 15  // Tambah ini biar lebih akurat (total vote count)
+}
+});
+}
 
-## send productMessage
-```javascript
+/* =======================
+SEND PRODUCT MESSAGE (Fixed with relayMessage structure)
+======================= */
+async function sendProductMessage(client, m) {
+const thumb = fs.readFileSync('./ZeppImage.jpg');
+
 await client.relayMessage(m.chat, {
-  productMessage {
-    title: "DewaBail",
-    description: "zZZ...",
-    thumbnail: { url: "./ZeppImage" },
-    productId: "EXAMPLE_TOKEN",
-    retailerId: "EXAMPLE_RETAILER_ID",
-    url: "https://t.me/RixzzNotDev",
-    body: "Nak Tido",
-    footer: "Footer",
-    buttons: [
-      {
-        name: "cta_url",
-        buttonParamsJson: "{\"display_text\":\"7eppeli-Pdf\",\"url\":\"https://t.me/RixzzNotDev\"}"
-      }
-    ],
-    priceAmount1000: 72502,
-    currencyCode: "IDR"
-  }
-})
-```
-Makasi Dhh Pake Ni Bail By Rixzz :>
+productMessage: {
+product: {
+productImage: {
+mimetype: "image/jpeg",
+jpegThumbnail: thumb
+},
+title: "DewaBail",
+description: "zZZ...",
+priceAmount1000: 72502,
+currencyCode: "IDR",
+retailerId: "EXAMPLE_RETAILER_ID",
+productId: "EXAMPLE_TOKEN",
+url: "https://t.me/RixzzNotDev"
+},
+businessOwnerJid: m.chat,
+body: "Nak Tido",
+footer: "Footer",
+buttons: [
+{
+buttonId: "cta_url",
+buttonText: { displayText: "7eppeli-Pdf" },
+type: 1
+}
+]
+}
+}, {});
+}
+
+/* =======================
+EXPORT
+======================= */
+module.exports = {
+connectWA,
+sendOrderMessage,
+sendPollResult,
+sendProductMessage
+};
